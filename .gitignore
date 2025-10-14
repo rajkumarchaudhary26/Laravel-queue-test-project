@@ -1,0 +1,6 @@
+/vendor/
+/node_modules/
+.env
+phpapp/src/vendor/
+vueapp/node_modules/
+.DS_Store
