@@ -12,7 +12,7 @@
           <button
             type="button"
             class="inline-flex items-center rounded-full border border-emerald-400 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-400 hover:text-slate-950 disabled:opacity-50"
-            :disabled="uploading || zipJobLoading"
+            :disabled="uploading"
             @click="triggerFilePicker"
           >
             <ArrowUpTrayIcon class="mr-2 h-5 w-5" />
