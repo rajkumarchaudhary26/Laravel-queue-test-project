@@ -1,44 +1,83 @@
 <?php
+
 namespace App\Jobs;
 
 use App\Models\Document;
 use App\Models\ZipJob;
+use Aws\S3\S3Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use ZipStream\ZipStream;
 use ZipStream\CompressionMethod;
-use Aws\S3\S3Client;
+use ZipStream\ZipStream;
 
-class CreateZipArchive implements ShouldQueue
+class CreateZipArchive implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 7200;
-    protected string $zipJobId;
+    private const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
     
-    const CHUNK_SIZE = 1048576; // 1MB chunks for streaming (same as BuildZipJob)
+    public int $tries = 3;
+    public int $timeout = 1800; // 30 minutes for large files
+    public int $maxExceptions = 3;
+    
+    // Prevent job overlap for 2 hours
+    public int $uniqueFor = 7200;
+
     private ?S3Client $s3Client = null;
+    private string $zipJobId;
 
     public function __construct(string $zipJobId)
     {
         $this->zipJobId = $zipJobId;
         $this->onQueue('zip-jobs');
-        $this->onConnection('database');
+        $this->onConnection(config('queue.default'));
+    }
+
+    /**
+     * The unique ID of the job.
+     * This ensures only ONE worker processes this specific zip job at a time.
+     */
+    public function uniqueId(): string
+    {
+        return "zip-job:{$this->zipJobId}";
+    }
+
+    /**
+     * Get the cache driver that should manage the lock.
+     */
+    public function uniqueVia()
+    {
+        return \Illuminate\Support\Facades\Cache::driver('redis');
     }
 
     public function handle(): void
     {
-        Log::info('[CreateZipArchive] Job started', ['zip_job_id' => $this->zipJobId]);
+        Log::info('[CreateZipArchive] Job started', [
+            'zip_job_id' => $this->zipJobId,
+            'worker_pid' => getmypid(),
+            'attempt' => $this->attempts()
+        ]);
         
         $job = ZipJob::find($this->zipJobId);
         if (!$job) {
             Log::warning('[CreateZipArchive] job not found', ['zip_job_id' => $this->zipJobId]);
+            return;
+        }
+
+        // Check if job is already being processed or completed
+        if (in_array($job->status, ['processing', 'completed'])) {
+            Log::warning('[CreateZipArchive] Job already in progress or completed', [
+                'zip_job_id' => $this->zipJobId,
+                'status' => $job->status,
+                'worker_pid' => getmypid()
+            ]);
             return;
         }
 
@@ -48,7 +87,10 @@ class CreateZipArchive implements ShouldQueue
             'error' => null,
         ])->save();
         
-        Log::info('[CreateZipArchive] Status updated to processing', ['zip_job_id' => $this->zipJobId]);
+        Log::info('[CreateZipArchive] Status updated to processing', [
+            'zip_job_id' => $this->zipJobId,
+            'worker_pid' => getmypid()
+        ]);
 
         $documents = Document::query()
             ->whereIn('id', $job->document_ids ?? [])
@@ -57,7 +99,8 @@ class CreateZipArchive implements ShouldQueue
         Log::info('[CreateZipArchive] Documents collected', [
             'zip_job_id' => $this->zipJobId,
             'count' => $documents->count(),
-            'document_ids' => $documents->pluck('id')->toArray()
+            'document_ids' => $documents->pluck('id')->toArray(),
+            'worker_pid' => getmypid()
         ]);
 
         if ($documents->isEmpty()) {
@@ -75,7 +118,8 @@ class CreateZipArchive implements ShouldQueue
         Log::info('[CreateZipArchive] Disk configuration', [
             'zip_job_id' => $this->zipJobId,
             'source_disk' => $sourceDiskName,
-            'archive_disk' => $archiveDiskName
+            'archive_disk' => $archiveDiskName,
+            'worker_pid' => getmypid()
         ]);
 
         // Initialize S3 client if using S3
@@ -93,7 +137,8 @@ class CreateZipArchive implements ShouldQueue
         Log::info('[CreateZipArchive] Archive paths prepared', [
             'zip_job_id' => $this->zipJobId,
             'archive_path' => $archivePath,
-            'archive_filename' => $archiveFilename
+            'archive_filename' => $archiveFilename,
+            'worker_pid' => getmypid()
         ]);
 
         $tempFilePath = tempnam(sys_get_temp_dir(), 'queuework_');
@@ -118,7 +163,10 @@ class CreateZipArchive implements ShouldQueue
         }
 
         try {
-            Log::info('[CreateZipArchive] Creating ZipStream', ['zip_job_id' => $this->zipJobId]);
+            Log::info('[CreateZipArchive] Creating ZipStream', [
+                'zip_job_id' => $this->zipJobId,
+                'worker_pid' => getmypid()
+            ]);
             
             $zip = new ZipStream(
                 outputName: null,
@@ -131,7 +179,8 @@ class CreateZipArchive implements ShouldQueue
 
             Log::info('[CreateZipArchive] Starting to add files to zip', [
                 'zip_job_id' => $this->zipJobId,
-                'total_files' => $total
+                'total_files' => $total,
+                'worker_pid' => getmypid()
             ]);
 
             foreach ($documents as $index => $document) {
@@ -140,7 +189,8 @@ class CreateZipArchive implements ShouldQueue
                     'document_id' => $document->id,
                     'path' => $document->path,
                     'original_name' => $document->original_name,
-                    'progress' => ($index + 1) . '/' . $total
+                    'progress' => ($index + 1) . '/' . $total,
+                    'worker_pid' => getmypid()
                 ]);
 
                 $entryName = $document->original_name ?? basename($document->path);
@@ -183,9 +233,9 @@ class CreateZipArchive implements ShouldQueue
                         'zip_job_id' => $this->zipJobId,
                         'processed' => $processed,
                         'total' => $total,
-                        'progress' => min($progress, 95) . '%'
+                        'progress' => min($progress, 95) . '%',
+                        'worker_pid' => getmypid()
                     ]);
-
                 } catch (\Throwable $e) {
                     Log::error('[CreateZipArchive] Failed to add file to zip', [
                         'zip_job_id' => $this->zipJobId,
@@ -198,7 +248,10 @@ class CreateZipArchive implements ShouldQueue
                 }
             }
 
-            Log::info('[CreateZipArchive] Finishing zip stream', ['zip_job_id' => $this->zipJobId]);
+            Log::info('[CreateZipArchive] Finishing zip stream', [
+                'zip_job_id' => $this->zipJobId,
+                'worker_pid' => getmypid()
+            ]);
             
             $zip->finish();
             fflush($tempHandle);
@@ -207,7 +260,8 @@ class CreateZipArchive implements ShouldQueue
             Log::info('[CreateZipArchive] Zip created, preparing upload', [
                 'zip_job_id' => $this->zipJobId,
                 'temp_file' => $tempFilePath,
-                'file_size' => filesize($tempFilePath)
+                'file_size' => filesize($tempFilePath),
+                'worker_pid' => getmypid()
             ]);
 
             $readStream = fopen($tempFilePath, 'rb');
@@ -218,7 +272,8 @@ class CreateZipArchive implements ShouldQueue
             Log::info('[CreateZipArchive] Uploading to storage', [
                 'zip_job_id' => $this->zipJobId,
                 'archive_path' => $archivePath,
-                'disk' => $archiveDiskName
+                'disk' => $archiveDiskName,
+                'worker_pid' => getmypid()
             ]);
 
             $success = $archiveDisk->put($archivePath, $readStream);
@@ -230,7 +285,8 @@ class CreateZipArchive implements ShouldQueue
 
             Log::info('[CreateZipArchive] Upload successful', [
                 'zip_job_id' => $this->zipJobId,
-                'archive_path' => $archivePath
+                'archive_path' => $archivePath,
+                'worker_pid' => getmypid()
             ]);
 
             $job->forceFill([
@@ -245,8 +301,8 @@ class CreateZipArchive implements ShouldQueue
                 'zip_job_id' => $job->id,
                 'archive_path' => $archivePath,
                 'disk' => $archiveDiskName,
+                'worker_pid' => getmypid()
             ]);
-
         } catch (\Throwable $exception) {
             $job->forceFill([
                 'status' => 'failed',
@@ -260,6 +316,7 @@ class CreateZipArchive implements ShouldQueue
                 'message' => $exception->getMessage(),
                 'file' => $exception->getFile(),
                 'line' => $exception->getLine(),
+                'worker_pid' => getmypid()
             ]);
         } finally {
             if (is_resource($tempHandle)) {
@@ -272,7 +329,7 @@ class CreateZipArchive implements ShouldQueue
     }
 
     /**
-     * Initialize S3 client (same as BuildZipJob)
+     * Initialize S3 client
      */
     private function initializeS3Client(): void
     {
@@ -297,7 +354,7 @@ class CreateZipArchive implements ShouldQueue
     }
 
     /**
-     * Add S3 file to zip using chunked streaming (same pattern as BuildZipJob)
+     * Add S3 file to zip using chunked streaming
      */
     private function addS3FileToZipWithStreaming($zip, string $entryName, string $s3Key): void
     {
@@ -400,7 +457,6 @@ class CreateZipArchive implements ShouldQueue
                 'file' => $s3Key,
                 'entry' => $entryName
             ]);
-
         } finally {
             if (!$streamClosed && is_resource($tempStream)) {
                 fclose($tempStream);
@@ -425,6 +481,7 @@ class CreateZipArchive implements ShouldQueue
             'zip_job_id' => $this->zipJobId,
             'exception' => get_class($exception),
             'message' => $exception->getMessage(),
+            'worker_pid' => getmypid()
         ]);
     }
 }
