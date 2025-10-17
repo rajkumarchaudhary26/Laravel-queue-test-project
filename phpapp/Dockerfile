@@ -34,6 +34,8 @@ RUN apt-get update && \
 
 RUN pecl install xdebug && docker-php-ext-enable xdebug
 
+RUN pecl install redis && docker-php-ext-enable redis
+
 RUN docker-php-ext-install pcntl
 
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
