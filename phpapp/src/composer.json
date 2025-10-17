@@ -15,7 +15,8 @@
         "nesbot/carbon": "^2.72",
         "opcodesio/log-viewer": "^3.15",
         "phenx/php-font-lib": "^1.0",
-        "phenx/php-svg-lib": "^1.0"
+        "phenx/php-svg-lib": "^1.0",
+        "predis/predis": "^3.2"
     },
     "require-dev": {
         "laravel/pint": "^1.0",
