@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Jobs;
 
 use App\Models\Document;
@@ -51,10 +50,19 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
 
     /**
      * Get the cache driver that should manage the lock.
+     * This makes the job work with both Redis and Database queue drivers.
      */
     public function uniqueVia()
     {
-        return \Illuminate\Support\Facades\Cache::driver('redis');
+        // Use cache driver if Redis is available, otherwise use database
+        $queueConnection = config('queue.default');
+        
+        if ($queueConnection === 'redis') {
+            return \Illuminate\Support\Facades\Cache::driver('redis');
+        }
+        
+        // For database queue, use the cache driver (which can be redis or database)
+        return \Illuminate\Support\Facades\Cache::driver();
     }
 
     public function handle(): void
@@ -62,7 +70,8 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
         Log::info('[CreateZipArchive] Job started', [
             'zip_job_id' => $this->zipJobId,
             'worker_pid' => getmypid(),
-            'attempt' => $this->attempts()
+            'attempt' => $this->attempts(),
+            'queue_connection' => config('queue.default')
         ]);
         
         $job = ZipJob::find($this->zipJobId);
@@ -303,6 +312,7 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
                 'disk' => $archiveDiskName,
                 'worker_pid' => getmypid()
             ]);
+
         } catch (\Throwable $exception) {
             $job->forceFill([
                 'status' => 'failed',
@@ -457,6 +467,7 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
                 'file' => $s3Key,
                 'entry' => $entryName
             ]);
+
         } finally {
             if (!$streamClosed && is_resource($tempStream)) {
                 fclose($tempStream);
