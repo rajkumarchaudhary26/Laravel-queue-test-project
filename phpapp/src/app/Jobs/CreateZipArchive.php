@@ -23,11 +23,10 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
     private const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
     
     public int $tries = 3;
-    public int $timeout = 1800; // 30 minutes for large files
+    public int $timeout = 86400;
     public int $maxExceptions = 3;
-    
-    // Prevent job overlap for 2 hours
-    public int $uniqueFor = 7200;
+
+    public int $uniqueFor = 86400;
 
     private ?S3Client $s3Client = null;
     private string $zipJobId;
