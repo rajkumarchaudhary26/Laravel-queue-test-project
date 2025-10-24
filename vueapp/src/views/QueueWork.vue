@@ -36,9 +36,109 @@
             <TrashIcon class="mr-2 h-5 w-5" />
             削除
           </button>
+          <!-- Test Mode Button -->
+          <button
+            type="button"
+            class="inline-flex items-center rounded-full border border-amber-400 px-4 py-2 text-sm font-medium text-amber-300 transition hover:bg-amber-400 hover:text-slate-950"
+            @click="showTestPanel = !showTestPanel"
+          >
+            テストモード
+          </button>
         </div>
       </div>
     </header>
+
+    <!-- Test Panel -->
+    <div v-if="showTestPanel" class="border-b border-amber-500/30 bg-amber-950/20">
+      <div class="mx-auto max-w-4xl px-6 py-6">
+        <h2 class="mb-4 text-lg font-semibold text-amber-300">並行ダウンロードテスト</h2>
+        
+        <!-- File Selection for Test -->
+        <div class="mb-4 rounded-lg border border-amber-500/50 bg-amber-900/10 p-4">
+          <div class="mb-2 text-sm font-medium text-amber-200">テスト用ファイル選択</div>
+          <div class="space-y-2 max-h-60 overflow-y-auto">
+            <label
+              v-for="doc in documents"
+              :key="doc.id"
+              class="flex items-center gap-3 rounded border border-amber-600/30 bg-slate-900/50 p-2 hover:bg-slate-800/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                :value="doc.id"
+                v-model="testFileSelection"
+                class="h-4 w-4 accent-amber-400"
+              />
+              <component
+                :is="fileIcon(determineType(doc.mime_type, doc.extension))"
+                class="h-5 w-5"
+                :class="iconClass(determineType(doc.mime_type, doc.extension))"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="text-sm text-slate-200 truncate">{{ doc.original_name }}</div>
+                <div class="text-xs text-slate-500">{{ formatSize(doc.size) }}</div>
+              </div>
+            </label>
+          </div>
+          <div class="mt-2 text-xs text-amber-400">
+            選択中: {{ testFileSelection.length }} ファイル (各ジョブにこのファイルセットが使われます)
+          </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-3">
+          <button
+            @click="runConcurrentTest(2)"
+            :disabled="testFileSelection.length === 0 || testRunning"
+            class="rounded-lg border border-amber-400 bg-amber-500/10 px-4 py-3 text-left transition hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <div class="text-sm font-semibold text-amber-300">2並行ジョブ</div>
+            <div class="mt-1 text-xs text-amber-400">2つのZIPジョブを同時実行</div>
+          </button>
+          <button
+            @click="runConcurrentTest(3)"
+            :disabled="testFileSelection.length === 0 || testRunning"
+            class="rounded-lg border border-amber-400 bg-amber-500/10 px-4 py-3 text-left transition hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <div class="text-sm font-semibold text-amber-300">3並行ジョブ</div>
+            <div class="mt-1 text-xs text-amber-400">3つのZIPジョブを同時実行</div>
+          </button>
+          <button
+            @click="runConcurrentTest(5)"
+            :disabled="testFileSelection.length === 0 || testRunning"
+            class="rounded-lg border border-amber-400 bg-amber-500/10 px-4 py-3 text-left transition hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <div class="text-sm font-semibold text-amber-300">5並行ジョブ</div>
+            <div class="mt-1 text-xs text-amber-400">5つのZIPジョブを同時実行 (キュー競合)</div>
+          </button>
+        </div>
+        <div v-if="testRunning" class="mt-4 rounded-lg border border-amber-500/50 bg-amber-900/20 p-4">
+          <div class="text-sm font-medium text-amber-200">テスト実行中...</div>
+          <div class="mt-2 text-xs text-amber-300">{{ testStatus }}</div>
+        </div>
+        <div v-if="testResults" class="mt-4 rounded-lg border border-emerald-500/50 bg-emerald-900/20 p-4">
+          <div class="text-sm font-semibold text-emerald-200">テスト完了</div>
+          <div class="mt-2 space-y-1 text-xs text-emerald-300">
+            <div>並行数: {{ testResults.concurrentCount }}</div>
+            <div>テストファイル: {{ testResults.fileNames.join(', ') }}</div>
+            <div>総ファイルサイズ: {{ formatSize(testResults.totalFileSize) }}</div>
+            <div>開始時刻: {{ testResults.startTime }}</div>
+            <div>終了時刻: {{ testResults.endTime }}</div>
+            <div>総所要時間: {{ testResults.totalDuration }}秒</div>
+            <div>平均ジョブ時間: {{ testResults.averageJobTime }}秒</div>
+            <div>個別ジョブ時間: {{ testResults.jobTimes.join('s, ') }}s</div>
+            <div>ジョブID: {{ testResults.jobIds.join(', ') }}</div>
+          </div>
+          <button
+            @click="copyTestResults"
+            class="mt-3 rounded border border-emerald-400 px-3 py-1 text-xs text-emerald-300 hover:bg-emerald-400 hover:text-slate-950"
+          >
+            結果をコピー
+          </button>
+        </div>
+        <div class="mt-4 text-xs text-amber-400">
+          テストを実行するには、上記からファイルを選択してください。
+        </div>
+      </div>
+    </div>
 
     <main class="mx-auto max-w-4xl px-6 py-10">
       <!-- Upload Progress -->
@@ -86,15 +186,12 @@
           </div>
         </div>
       </section>
-
       <section v-if="flashMessage" class="mb-6 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
         {{ flashMessage }}
       </section>
-
       <section v-if="errorMessage" class="mb-6 rounded-lg border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
         {{ errorMessage }}
       </section>
-
       <section v-if="zipJobStatus" class="mb-6 rounded-lg border border-slate-800 bg-slate-900 px-4 py-4 text-sm">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -121,7 +218,6 @@
           </div>
         </div>
       </section>
-
       <section class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
         <header class="flex items-center justify-between border-b border-slate-800 px-6 py-4">
           <div class="flex items-center gap-3">
@@ -139,7 +235,6 @@
             選択中: <span class="font-semibold text-emerald-300">{{ selectedDocuments.length }}</span> 件
           </p>
         </header>
-
         <table class="min-w-full divide-y divide-slate-800">
           <thead class="bg-slate-950 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
             <tr>
@@ -201,7 +296,6 @@
         </table>
       </section>
     </main>
-
     <input
       ref="fileInput"
       type="file"
@@ -227,6 +321,18 @@ import { useChunkedUpload } from '@/composables/useChunkedUpload';
 
 type FileType = 'pdf' | 'image' | 'audio' | 'video' | 'other';
 
+interface TestResult {
+  concurrentCount: number;
+  startTime: string;
+  endTime: string;
+  totalDuration: number;
+  averageJobTime: number;
+  jobIds: string[];
+  jobTimes: number[];
+  fileNames: string[];
+  totalFileSize: number;
+}
+
 const documents = ref<DocumentRecord[]>([]);
 const selected = ref<number[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -235,6 +341,13 @@ const errorMessage = ref<string | null>(null);
 const flashMessage = ref<string | null>(null);
 const zipJobStatus = ref<ZipJobStatusResponse | null>(null);
 const pollTimer = ref<number | null>(null);
+
+// Test mode
+const showTestPanel = ref(false);
+const testRunning = ref(false);
+const testStatus = ref('');
+const testResults = ref<TestResult | null>(null);
+const testFileSelection = ref<number[]>([]);
 
 // Use chunked upload composable
 const { uploading, uploadProgress, uploadFiles, clearProgress } = useChunkedUpload();
@@ -256,6 +369,160 @@ const zipJobLoading = computed(() => {
   return zipJobStatus.value.status === 'queued' || zipJobStatus.value.status === 'processing';
 });
 
+// Concurrent test function
+const runConcurrentTest = async (concurrentCount: number) => {
+  if (testFileSelection.value.length === 0) {
+    errorMessage.value = 'テスト用のファイルを選択してください';
+    return;
+  }
+
+  testRunning.value = true;
+  testResults.value = null;
+  errorMessage.value = null;
+  flashMessage.value = null;
+
+  try {
+    // Get selected documents info for reporting
+    const selectedDocs = documents.value.filter(d => testFileSelection.value.includes(d.id));
+    const fileNames = selectedDocs.map(d => d.original_name);
+    const totalFileSize = selectedDocs.reduce((sum, d) => sum + (d.size || 0), 0);
+    
+    testStatus.value = `${concurrentCount}個のZIPジョブを同時送信中...`;
+    testStatus.value += `\n使用ファイル: ${fileNames.join(', ')}`;
+    
+    const startTime = new Date();
+    const startTimeStr = startTime.toLocaleTimeString('ja-JP', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      fractionalSecondDigits: 3 
+    });
+
+    console.log(`[TEST] Starting ${concurrentCount} concurrent jobs at ${startTimeStr}`);
+    console.log(`[TEST] Document IDs:`, testFileSelection.value);
+    console.log(`[TEST] File names:`, fileNames);
+    console.log(`[TEST] Total file size:`, totalFileSize, 'bytes');
+
+    // Create all jobs simultaneously using Promise.all
+    const jobPromises = Array.from({ length: concurrentCount }, async () => {
+      const { data } = await createZipJob(testFileSelection.value);
+      console.log(`[TEST] Job created: ${data.job_id}`);
+      return data.job_id;
+    });
+
+    const jobIds = await Promise.all(jobPromises);
+    
+    testStatus.value = `${jobIds.length}個のジョブが作成されました。完了を待機中...`;
+    console.log(`[TEST] All jobs submitted:`, jobIds);
+
+    // Poll all jobs until completion
+    const jobCompletionTimes = new Map<string, number>();
+    const pollInterval = 2000; // 2 seconds
+    const maxWaitTime = 1800000; // 30 minutes
+
+    const waitForCompletion = async () => {
+      const startPollTime = Date.now();
+      
+      while (jobCompletionTimes.size < jobIds.length) {
+        if (Date.now() - startPollTime > maxWaitTime) {
+          throw new Error('Timeout waiting for jobs to complete');
+        }
+
+        await Promise.all(
+          jobIds.map(async (jobId) => {
+            if (jobCompletionTimes.has(jobId)) return;
+
+            try {
+              const { data } = await getZipJobStatus(jobId);
+              
+              if (data.status === 'completed') {
+                const completionTime = Date.now();
+                jobCompletionTimes.set(jobId, completionTime);
+                console.log(`[TEST] Job ${jobId} completed at ${new Date(completionTime).toLocaleTimeString('ja-JP')}`);
+              } else if (data.status === 'failed') {
+                throw new Error(`Job ${jobId} failed: ${data.error}`);
+              }
+            } catch (error) {
+              console.error(`[TEST] Error checking job ${jobId}:`, error);
+            }
+          })
+        );
+
+        testStatus.value = `完了: ${jobCompletionTimes.size}/${jobIds.length}`;
+        
+        if (jobCompletionTimes.size < jobIds.length) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+      }
+    };
+
+    await waitForCompletion();
+
+    const endTime = new Date();
+    const endTimeStr = endTime.toLocaleTimeString('ja-JP', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      fractionalSecondDigits: 3 
+    });
+
+    const totalDuration = (endTime.getTime() - startTime.getTime()) / 1000;
+    
+    // Calculate individual job times
+    const jobTimes = jobIds.map(jobId => {
+      const completionTime = jobCompletionTimes.get(jobId)!;
+      return (completionTime - startTime.getTime()) / 1000;
+    });
+    
+    const averageJobTime = jobTimes.reduce((a, b) => a + b, 0) / jobTimes.length;
+
+    testResults.value = {
+      concurrentCount,
+      startTime: startTimeStr,
+      endTime: endTimeStr,
+      totalDuration: Math.round(totalDuration * 100) / 100,
+      averageJobTime: Math.round(averageJobTime * 100) / 100,
+      jobIds,
+      jobTimes: jobTimes.map(t => Math.round(t * 100) / 100),
+      fileNames,
+      totalFileSize,
+    };
+
+    console.log('[TEST] Test completed:', testResults.value);
+    
+    flashMessage.value = `テスト完了: ${concurrentCount}並行ジョブ - ${totalDuration.toFixed(2)}秒`;
+
+  } catch (error: any) {
+    console.error('[TEST] Test failed:', error);
+    errorMessage.value = `テスト失敗: ${error.message}`;
+  } finally {
+    testRunning.value = false;
+    testStatus.value = '';
+  }
+};
+
+const copyTestResults = () => {
+  if (!testResults.value) return;
+
+  const text = `
+並行ダウンロードテスト結果
+================================
+並行数: ${testResults.value.concurrentCount}
+テストファイル: ${testResults.value.fileNames.join(', ')}
+総ファイルサイズ: ${formatSize(testResults.value.totalFileSize)}
+開始時刻: ${testResults.value.startTime}
+終了時刻: ${testResults.value.endTime}
+総所要時間: ${testResults.value.totalDuration}秒
+平均ジョブ時間: ${testResults.value.averageJobTime}秒
+個別ジョブ時間: ${testResults.value.jobTimes.join('s, ')}s
+ジョブID: ${testResults.value.jobIds.join(', ')}
+  `.trim();
+
+  navigator.clipboard.writeText(text);
+  flashMessage.value = 'テスト結果をクリップボードにコピーしました';
+  setTimeout(() => flashMessage.value = null, 3000);
+};
+
 const triggerFilePicker = () => {
   fileInput.value?.click();
 };
@@ -263,7 +530,6 @@ const triggerFilePicker = () => {
 const determineType = (mime: string | null, extension: string | null): FileType => {
   const normalizedMime = mime?.toLowerCase() ?? '';
   const normalizedExt = extension?.toLowerCase() ?? '';
-
   if (normalizedMime.includes('pdf') || normalizedExt === 'pdf') return 'pdf';
   if (normalizedMime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(normalizedExt))
     return 'image';
@@ -365,10 +631,7 @@ const handleFilesChosen = async (event: Event) => {
     const filesArray = Array.from(pickedFiles);
     const uploadedDocuments = await uploadFiles(filesArray, 'uploads');
 
-    // Add uploaded documents to the list
     documents.value = [...uploadedDocuments, ...documents.value];
-    
-    // Select newly uploaded documents
     selected.value = uploadedDocuments.map((doc) => doc.id);
     
     flashMessage.value = `${uploadedDocuments.length} ファイルのアップロードが完了しました。`;
@@ -377,7 +640,6 @@ const handleFilesChosen = async (event: Event) => {
       count: uploadedDocuments.length,
       ids: uploadedDocuments.map(d => d.id),
     });
-
   } catch (error: any) {
     console.error('[QueueWork] Upload failed:', error);
     errorMessage.value = error.message || 'アップロードに失敗しました。';
@@ -416,7 +678,6 @@ const pollZipJobStatus = (jobId: string) => {
     try {
       const { data } = await getZipJobStatus(jobId);
       zipJobStatus.value = data;
-
       if (data.status === 'completed' || data.status === 'failed') {
         clearPollTimer();
         if (data.status === 'completed' && data.download_url) {
