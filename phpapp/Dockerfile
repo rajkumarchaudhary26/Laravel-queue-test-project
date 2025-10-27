@@ -76,6 +76,13 @@ if [ -d "/var/www/phpapp/bootstrap/cache" ]; then\n\
     chown -R www-data:www-data /var/www/phpapp/bootstrap/cache\n\
     chmod -R 775 /var/www/phpapp/bootstrap/cache\n\
 fi\n\
+\n\
+# Clean old Redis queue jobs (optional for dev environments)\n\
+if command -v redis-cli >/dev/null 2>&1; then\n\
+    echo \"Clearing old Redis queue data...\"\n\
+    redis-cli -h queue-redis -a \"${REDIS_PASSWORD:-redispassword}\" FLUSHALL || true\n\
+fi\n\
+\n\
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
 ' > /usr/local/bin/startup.sh && chmod +x /usr/local/bin/startup.sh
 
