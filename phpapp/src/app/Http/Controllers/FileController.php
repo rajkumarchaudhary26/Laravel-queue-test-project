@@ -366,11 +366,29 @@ class FileController extends Controller
             'progress' => 0,
         ]);
 
-        CreateZipArchive::dispatch($zipJob->id)->onQueue('zip-jobs');
+        // commenting to introduce a fake user authentication
+        // CreateZipArchive::dispatch($zipJob->id)->onQueue('zip-jobs');
+
+        // Log::info('[FileController.createZipJob] queued job', [
+        //     'zip_job_id' => $zipJob->id,
+        //     'document_ids' => $documentIds,
+        // ]);
+
+        // Simulate a "user" (since no authentication exists yet)
+        $fakeUser = [
+            'id' => 999,
+            'name' => 'Simulated User',
+            'email' => 'test@example.com',
+        ];
+
+        // Dispatch job with simulated user info
+        CreateZipArchive::dispatch($zipJob->id, $fakeUser)
+            ->onQueue('zip-jobs');
 
         Log::info('[FileController.createZipJob] queued job', [
             'zip_job_id' => $zipJob->id,
             'document_ids' => $documentIds,
+            'user' => $fakeUser,
         ]);
 
         return response()->json([
