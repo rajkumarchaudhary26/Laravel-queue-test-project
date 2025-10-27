@@ -30,10 +30,20 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
 
     private ?S3Client $s3Client = null;
     private string $zipJobId;
+    public array $user;
 
-    public function __construct(string $zipJobId)
+    // commenting for fake user authentication
+    // public function __construct(string $zipJobId)
+    // {
+    //     $this->zipJobId = $zipJobId;
+    //     $this->onQueue('zip-jobs');
+    //     $this->onConnection(config('queue.default'));
+    // }
+
+    public function __construct(string $zipJobId, array $user = [])
     {
         $this->zipJobId = $zipJobId;
+        $this->user = $user; // store simulated user info
         $this->onQueue('zip-jobs');
         $this->onConnection(config('queue.default'));
     }
@@ -66,11 +76,20 @@ class CreateZipArchive implements ShouldQueue, ShouldBeUnique
 
     public function handle(): void
     {
+        // commenting for fake user authentication
+        // Log::info('[CreateZipArchive] Job started', [
+        //     'zip_job_id' => $this->zipJobId,
+        //     'worker_pid' => getmypid(),
+        //     'attempt' => $this->attempts(),
+        //     'queue_connection' => config('queue.default')
+        // ]);
+
         Log::info('[CreateZipArchive] Job started', [
             'zip_job_id' => $this->zipJobId,
             'worker_pid' => getmypid(),
             'attempt' => $this->attempts(),
-            'queue_connection' => config('queue.default')
+            'queue_connection' => config('queue.default'),
+            'user' => $this->user, // show simulated user
         ]);
         
         $job = ZipJob::find($this->zipJobId);
