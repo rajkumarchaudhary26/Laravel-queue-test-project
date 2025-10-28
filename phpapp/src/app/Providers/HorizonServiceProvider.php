@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Providers;
 
 use Illuminate\Support\Facades\Gate;
@@ -28,10 +27,8 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            return in_array(optional($user)->email, [
-                // Allow all access
-                return true;
-            ]);
+            // Allow all access (NOT for production!)
+            return true;
         });
     }
 }
