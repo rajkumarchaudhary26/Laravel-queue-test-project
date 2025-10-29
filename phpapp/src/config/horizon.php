@@ -134,7 +134,7 @@ return [
         // Supervisor name (can be anything descriptive)
         'supervisor-zip-jobs' => [
             'connection' => 'redis',  // Must match config/queue.php connection
-            'queue' => ['zip-jobs'],  // Queues this supervisor handles
+            'queue' => ['zip-jobs', 'default'],  // Queues this supervisor handles
             'balance' => 'auto',      // auto|simple|false - job distribution strategy
             'autoScalingStrategy' => 'time', // time|size - how to scale workers
             'maxProcesses' => 3,      // Max concurrent worker processes
