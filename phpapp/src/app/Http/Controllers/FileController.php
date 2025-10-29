@@ -366,14 +366,6 @@ class FileController extends Controller
             'progress' => 0,
         ]);
 
-        // commenting to introduce a fake user authentication
-        // CreateZipArchive::dispatch($zipJob->id)->onQueue('zip-jobs');
-
-        // Log::info('[FileController.createZipJob] queued job', [
-        //     'zip_job_id' => $zipJob->id,
-        //     'document_ids' => $documentIds,
-        // ]);
-
         // Simulate a "user" (since no authentication exists yet)
         $fakeUser = [
             'id' => 999,
@@ -382,14 +374,18 @@ class FileController extends Controller
         ];
 
         // Dispatch job with simulated user info
-        try{
+        try {
+            Log::info('[FileController.createZipJob] attempting dispatch', [
+                'zip_job_id' => $zipJob->id,
+                'user' => $fakeUser,
+            ]);
+
             CreateZipArchive::dispatch($zipJob->id, $fakeUser)
                 ->onQueue('zip-jobs');
 
-            Log::info('[FileController.createZipJob] queued job', [
+            Log::info('[FileController.createZipJob] dispatch successful', [
                 'zip_job_id' => $zipJob->id,
-                'document_ids' => $documentIds,
-                'user' => $fakeUser,
+                'queue' => 'zip-jobs',
             ]);
 
             return response()->json([
@@ -397,8 +393,27 @@ class FileController extends Controller
                 'status' => $zipJob->status,
                 'progress' => $zipJob->progress,
             ], 202);
-        } catch(\Exception $e) {
-            Log::info('error', $e);
+
+        } catch (\Exception $e) {
+            Log::error('[FileController.createZipJob] dispatch failed', [
+                'zip_job_id' => $zipJob->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            // Mark job as failed
+            $zipJob->update([
+                'status' => 'failed',
+                'error' => 'Failed to dispatch job: ' . $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to queue job',
+                'error' => $e->getMessage(),
+                'job_id' => $zipJob->id,
+            ], 500);
         }
     }
 
