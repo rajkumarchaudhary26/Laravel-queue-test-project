@@ -382,20 +382,24 @@ class FileController extends Controller
         ];
 
         // Dispatch job with simulated user info
-        CreateZipArchive::dispatch($zipJob->id, $fakeUser)
-            ->onQueue('zip-jobs');
+        try{
+            CreateZipArchive::dispatch($zipJob->id, $fakeUser)
+                ->onQueue('zip-jobs');
 
-        Log::info('[FileController.createZipJob] queued job', [
-            'zip_job_id' => $zipJob->id,
-            'document_ids' => $documentIds,
-            'user' => $fakeUser,
-        ]);
+            Log::info('[FileController.createZipJob] queued job', [
+                'zip_job_id' => $zipJob->id,
+                'document_ids' => $documentIds,
+                'user' => $fakeUser,
+            ]);
 
-        return response()->json([
-            'job_id' => $zipJob->id,
-            'status' => $zipJob->status,
-            'progress' => $zipJob->progress,
-        ], 202);
+            return response()->json([
+                'job_id' => $zipJob->id,
+                'status' => $zipJob->status,
+                'progress' => $zipJob->progress,
+            ], 202);
+        } catch(\Exception $e) {
+            Log::info('error', $e);
+        }
     }
 
     public function showZipJob(string $zipJobId): JsonResponse
